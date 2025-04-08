@@ -1,0 +1,72 @@
+-------
+--VIM
+------
+PWD	En que directorio nos encontramos
+
+
+git commit --amend --no-edit
+
+En caso exista un archivo por modificar luego del add. realizado.... para q no existas dos commits
+
+$ git commit --amend -m "nuevo mensaje"
+//la opción -m permite escribir un nuevo mensaje desde la línea de comandos sin tener que abrir un editor.
+
+
+//
+
+git config --global user.name "su_nombre"
+git config --global user.email su_correo@example.com
+
+
+git config --list
+
+
+
+git config -h     Comandos de Git Config
+
+Para deshacer cambios en su copia de trabajo local, utilice el comando checkout de la siguiente forma:
+
+git checkout HEAD <ruta_archivo>
+
+la opción -v permite visualizar la URL que Git ha asociado al repositorio
+
+git remote -V 
+
+
+La opción -u mantiene un registro de la rama a la que se hace push, lo anterior con el fin de evitar conflictos o ausencia de información al hacer pull.
+
+git push -u repo_remoto master 
+
+la opción -f o --force sobre escribe toda la estructura y secuencia de commits en el repositorio remoto. Lo recomendable es asegurarse de hacer pull y estabilizar el código en el repositorio local antes de hacer push.
+
+git push -f origin master 
+
+la opción --set-upstream se encarga de publicar la rama en el repositorio remoto
+
+git push --set-upstream origin Brasil 
+
+
+
+git remote -V 
+git remote rename origin repo_comidas
+
+
+
+Cuando la rama no esta en el local se pruede moverlo al local con:
+
+git checkout --track origin/Colombia
+
+
+Consulte las ramas del repositorio para verificar la operación anterior
+
+git branch -a
+
+--------------------------------------------------
+
+ls      dir
+ls -a   ver directorios/archivos ocultos
+pwd	directorio donde se encuentran
+rm nombre_archivo     elimna archivo
+
+
+
