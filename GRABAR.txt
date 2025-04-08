@@ -1,0 +1,289 @@
+//OVER
+String ls_error, ls_numero ,ls_tipo_lote, ls_result
+String ls_tipo_persona , ls_cod_persona, ls_asientocosto
+Long   ll_row
+Double li_error
+dECIMAL LD_IMPORTE_TOTAL
+ib_grabo_ok = FALSE
+///////////////////
+ls_tipo_lote = ''
+SQLCA.of_begin_transaction()
+
+String ls_anho,ls_mes,ls_estado_cierre
+DateTime ldt_fecha_documento_cierre
+
+ldt_fecha_documento_cierre=tab_1.tabpage_1.dw_1.getitemdatetime(1,'fec_movimiento')
+
+//**
+//validaciones de cierre de operaciones
+ls_anho = String(ldt_fecha_documento_cierre, 'YYYY')
+ls_mes = String(ldt_fecha_documento_cierre, 'MM')
+
+SELECT EST_CIERRE INTO :ls_estado_cierre
+FROM FEC_CIERRE_OPERACIONES
+WHERE COD_EMPRESA = :gs_cempresa AND
+		COD_aLMACEN = :gs_calmacen AND
+		NUM_ANO= :ls_anho AND
+		NUM_MES = :ls_mes;
+		 If ls_estado_cierre= 'CER' Then  
+				SQLCA.of_rollBack()
+				MessageBox("AVISO","El PERIODO esta CERRADO, NO se puede hacer REGISTROS de ese periodo")		
+				RETURN 
+			End if 
+//FIN DE VALIDACION DE CIERRE
+
+
+ls_numero = TRIM(tab_1.tabpage_1.dw_1.GetItemString(1,'num_movimiento'))
+If isnull(ls_numero) Or Len(ls_numero) <= 0  Then 
+   ls_numero = f_get_correlativo_mov_almacen(gs_calmacen,is_ind_movimiento,gs_cperiodo,ls_error)
+	If ls_numero = "-1" Then
+		SQLCA.of_rollBack()
+		MessageBox("Error al Obtener Correlativo" , ls_error)
+		RETURN
+	End if 
+	ls_tipo_lote = Mid(TRIM(gs_calmacen) + TRIM(is_ind_movimiento) , 1 , 16 )
+	//messagebox("ls_tipo_lote",ls_tipo_lote)
+	tab_1.tabpage_1.dw_1.SetItem(1,'num_movimiento' , ls_numero)
+	tab_1.tabpage_1.dw_1.SetItem(1, 'cod_usuario', gs_cusuario)
+End if 
+//ACTUALIZAR STOCK 
+String   ls_num1 , ls_num2
+String   ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote 
+Decimal  ldc_stock , ldc_costo 
+Datetime ldc_fecha_movimiento
+String   ls_tipo_proveedor_old , ls_cod_proveedor_old
+String   ls_cod_titulo_old     , ls_nro_lote_old
+Decimal  ldc_stock_old
+String   ls_cod_almacen_destino
+
+ldc_fecha_movimiento = tab_1.tabpage_1.dw_1.GetItemDateTime(1,'fec_movimiento')
+If is_tipo_movimiento = "ITR" Then
+	ls_cod_almacen_destino     = tab_1.tabpage_1.dw_1.GetItemString(1,'cod_almacendestino')
+End if 
+ls_tipo_persona = tab_1.tabpage_1.dw_1.GetItemString(1,'tipo_persona')
+ls_cod_persona = tab_1.tabpage_1.dw_1.GetItemString(1,'cod_persona')
+//RESTAURAR STOCK DE ITEMS ELIMINADOS
+FOR ll_row = 1 to tab_1.tabpage_1.dw_3.DeletedCount ( ) 
+	 ls_cod_titulo_old = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"cod_titulo" , Delete! , TRUE )
+	 ls_nro_lote_old   = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"nro_lote"   , Delete! , TRUE )
+	 ls_tipo_proveedor_old    = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'tipo_proveedor' , Delete! , TRUE )
+	 ls_cod_proveedor_old     = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'cod_proveedor'  , Delete! , TRUE )	
+	 ldc_stock_old     = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"can_movimiento" , Delete! , TRUE )	 
+	 ldc_costo 	       = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"imp_costo" , Delete!, TRUE)
+	 ls_error = ""
+	 //RESTAR VALOR ANTERIOR
+	 If is_tipo_movimiento = "ICS" Then
+		 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+								"STK_CONSIGPROVEEDOR" , FALSE , ldc_stock_old , ldc_fecha_movimiento , ldc_costo , ls_error )		 								
+	 Else
+		 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+								"STK_ALMACEN" , FALSE , ldc_stock_old , ldc_fecha_movimiento , ldc_costo , ls_error )								
+	 End if 								
+	 If ls_num2 = "-1" Then
+		 SQLCA.of_rollBack()
+		 Messagebox("Error al Actualizar Stock" , ls_error)
+		 RETURN
+	 End if 
+	 //Grabar Stock en Almacen Consignacion
+	 If is_tipo_movimiento = "ICS" Then
+		 ls_num2 = f_graba_stock_consignacion("P" , ls_tipo_persona , ls_cod_persona , gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+								 FALSE , ldc_stock_old ,  ls_error )		 										
+		 If ls_num2 = "-1" Then
+			 SQLCA.of_rollBack()
+			 Messagebox("Error al Actualizar Stock de Consignaciones" , ls_error)
+			 RETURN
+		 End if 
+		 
+		 wf_borra_lote(gs_cempresa,ls_cod_titulo_old,gs_calmacen,ls_tipo_proveedor_old,ls_cod_proveedor_old,ls_nro_lote_old)
+		 
+		 
+	 End if 
+NEXT
+//ITEMS MODIFICADOS
+Decimal ldc_costo_old
+FOR ll_row = 1 TO tab_1.tabpage_1.dw_4.RowCount() 
+	 ls_num1 = TRIM(tab_1.tabpage_1.dw_4.GetItemString(ll_row,"num_movimiento"))
+	 If isnull(ls_num1) OR Len(ls_num1) <= 0 Then
+		 tab_1.tabpage_1.dw_4.SetItem(ll_row,"num_movimiento" , ls_numero)
+	 End if 	 
+	 ls_cod_titulo_old = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"cod_titulo" , Primary! , TRUE )
+	 ls_nro_lote_old   = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"nro_lote"   , Primary! , TRUE )
+	 ldc_stock_old     = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"can_movimiento" , Primary! , TRUE )
+	 ls_tipo_proveedor_old    = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'tipo_proveedor', Primary! , TRUE )
+	 ls_cod_proveedor_old     = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'cod_proveedor', Primary! , TRUE )	 
+	 ldc_costo_old     = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"imp_costo" , Primary! , TRUE )
+	 
+	 ls_cod_titulo = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"cod_titulo")
+	 ls_tipo_proveedor    = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'tipo_proveedor')
+	 ls_cod_proveedor     = tab_1.tabpage_1.dw_4.GetItemString(ll_row,'cod_proveedor')	 
+	 ls_nro_lote   = tab_1.tabpage_1.dw_4.GetItemString(ll_row,"nro_lote")
+	 ldc_stock     = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"can_movimiento")
+	 ldc_costo 	   = tab_1.tabpage_1.dw_4.GetItemDecimal(ll_row,"imp_costo")
+	 If isnull(ls_nro_lote) Or Len(Trim(ls_nro_lote)) <= 0 Then
+		 // GENERAR EL NUMERO DE LOTE
+		 ls_error = ''		 
+//		 ls_nro_lote = f_get_correlativo_lote(ls_cod_titulo , ls_error)
+		 ls_nro_lote = f_get_correlativo_lote(ls_tipo_lote , ls_error)
+		 If ls_nro_lote = "-1" Then
+			 SQLCA.of_rollBack()
+			 MessageBox("Error al Obtener Correlativo de LOTE " + String(ll_row) , ls_error)
+			 RETURN
+		 End if 		 
+		 tab_1.tabpage_1.dw_4.SetItem(ll_row,"nro_lote" , ls_nro_lote)
+	 End if 
+	 ls_error = ""	 
+	 IF tab_1.tabpage_1.dw_4.GetItemStatus(ll_row,0,Primary!) = DataModified! Then
+		 //RESTAR VALOR ANTERIOR
+	 	 If is_tipo_movimiento = "ICS" Then
+			 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+									"STK_CONSIGPROVEEDOR" , FALSE , ldc_stock_old , ldc_fecha_movimiento , ldc_costo_old , ls_error )
+	    Else	
+			 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+									"STK_ALMACEN" , FALSE , ldc_stock_old , ldc_fecha_movimiento , ldc_costo_old , ls_error )
+		 End if 
+		 If ls_num2 = "-1" Then
+			 SQLCA.of_rollBack()
+			 Messagebox("Error al Actualizar Stock" , ls_error)
+			 RETURN
+		 End if  
+		 //Restar de Stock de Consignaciones
+		 If is_tipo_movimiento = "ICS" Then
+			 ls_num2 = f_graba_stock_consignacion("P" , ls_tipo_persona , ls_cod_persona , gs_calmacen , ls_cod_titulo_old , ls_tipo_proveedor_old , ls_cod_proveedor_old , ls_nro_lote_old , & 
+									 FALSE , ldc_stock_old ,  ls_error )		 										
+			 If ls_num2 = "-1" Then
+				 SQLCA.of_rollBack()
+				 Messagebox("Error al Actualizar Stock de Consignaciones" , ls_error)
+				 RETURN
+			 End if 
+		 End if 
+		 
+	End if 
+	ls_error = ""
+   IF tab_1.tabpage_1.dw_4.GetItemStatus(ll_row,0,Primary!) = DataModified! Or &
+      tab_1.tabpage_1.dw_4.GetItemStatus(ll_row,0,Primary!) = New!          Or &
+      tab_1.tabpage_1.dw_4.GetItemStatus(ll_row,0,Primary!) = NewModified!  Or is_tipo_movimiento = "ITR" THEN
+		 //SUMAR STOCK
+		 If is_tipo_movimiento = "ICS" Then
+			//cambiado para grabar el numero de movimiento y tipo de movimiento en la tabla stock_lote
+//			 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+//									"STK_CONSIGPROVEEDOR" , TRUE , ldc_stock , ldc_fecha_movimiento , ldc_costo , ls_error )		 
+			 ls_num2 = f_graba_stock_almacen_nuevo(gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+									"STK_CONSIGPROVEEDOR" , TRUE , ldc_stock , ldc_fecha_movimiento , ldc_costo , ls_error ,ls_numero , is_tipo_movimiento)						
+		 Else
+//			 ls_num2 = f_graba_stock_almacen(gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+//		                     "STK_ALMACEN" , TRUE , ldc_stock , ldc_fecha_movimiento , ldc_costo , ls_error,  )
+	   
+		//cambiado para grabar el numero de movimiento y tipo de movimiento en la tabla stock_lote
+			 ls_num2 = f_graba_stock_almacen_nuevo(gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+									"STK_ALMACEN" , TRUE , ldc_stock , ldc_fecha_movimiento , ldc_costo , ls_error ,ls_numero , is_tipo_movimiento)
+		 End if 									
+		 If ls_num2 = "-1" Then
+			 SQLCA.of_rollBack()
+			 Messagebox("Error al Actualizar Stock" , ls_error)
+			 RETURN
+		 End if 
+		 // Si es consignacion 
+		 If is_tipo_movimiento = "ICS" Then
+//			 ls_num2 = f_graba_stock_consignacion("P" , ls_tipo_persona , ls_cod_persona , gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+//									 TRUE , ldc_stock ,  ls_error )	
+			 ls_num2 = f_graba_stock_consignacion_nuevo("P" , ls_tipo_persona , ls_cod_persona , gs_calmacen , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+									 TRUE , ldc_stock ,  ls_error, ls_numero, is_tipo_movimiento)	
+			 If ls_num2 = "-1" Then
+				 SQLCA.of_rollBack()
+				 Messagebox("Error al Actualizar Stock de Consignaciones" , ls_error)
+				 RETURN
+			 End if 
+		 End if 
+		 
+		 //SI ES TRANSFERENCIA DE ALMACEN RESTAR DE STOCK DE SALIDA DE TRANSFERENCIA
+		 //STK_TRANSSALIDA
+		 If is_tipo_movimiento = "ITR" Then
+			 ls_num2 = f_graba_stock_almacen(ls_cod_almacen_destino , ls_cod_titulo , ls_tipo_proveedor , ls_cod_proveedor , ls_nro_lote , & 
+									"CIERRA_TRANSFERENCIA" , FALSE , ldc_stock , ldc_fecha_movimiento , ldc_costo , ls_error )
+			 If ls_num2 = "-1" Then
+				 SQLCA.of_rollBack()
+				 Messagebox("Error al Actualizar Stock de Transferencia" , ls_error)
+				 RETURN
+			 End if 
+		 End if 
+		 wf_borra_lote(gs_cempresa,ls_cod_titulo_old,gs_calmacen,ls_tipo_proveedor_old,ls_cod_proveedor_old,ls_nro_lote_old)
+
+	End if 	 
+NEXT		
+
+// Cambiamos Estado de Documento
+If is_tipo_movimiento = "ITR" Then
+   tab_1.tabpage_3.dw_graba_Estado.SetItem(1,'COD_ESTADOMOVALMACEN','LQ')
+	If tab_1.tabpage_3.dw_graba_estado.UPDATE() <> 1 Then
+		ls_error = String(SQLCA.SQLCODE) + ":"  + SQLCA.SQLERRTEXT
+		SQLCA.of_rollBack()
+		RETURN 
+	End if 
+	// 
+	
+End if 
+
+If tab_1.tabpage_1.dw_1.UPDATE() <> 1 Then
+	ls_error = String(SQLCA.SQLCODE) + ":"  + SQLCA.SQLERRTEXT
+	SQLCA.of_rollBack()
+	RETURN 
+End if 
+If tab_1.tabpage_1.dw_3.UPDATE() <> 1 Then
+	ls_error = String(SQLCA.SQLCODE) + ":"  + SQLCA.SQLERRTEXT
+	SQLCA.of_rollBack()
+	RETURN 
+End if 
+
+//Invocar procedimiento de generacion de asiento JRG 15/02/05
+/*If is_tipo_movimiento = "ICS" Then
+	
+	 SELECT
+		  SUM(round((NVL(B.CAN_MOVIMIENTO,0) * NVL(B.IMP_COSTO,0)) * 
+				(  case when a.cod_moneda ='02' then 1 ELSE 1 END),2) ) INTO :LD_IMPORTE_TOTAL
+		  FROM FEC_MOV_ALMACEN_CAB A, FEC_MOV_ALMACEN_DET B 
+		 WHERE A.COD_EMPRESA = B.COD_EMPRESA
+			AND A.COD_ALMACEN = B.COD_ALMACEN
+			AND A.IND_MOVIMIENTO = B.IND_MOVIMIENTO
+			AND A.NUM_MOVIMIENTO = B.NUM_MOVIMIENTO
+			AND A.COD_EMPRESA = :gs_cempresa
+			AND A.COD_ALMACEN = :gs_calmacen 
+			AND A.IND_MOVIMIENTO = 'E'
+			AND A.NUM_MOVIMIENTO = :ls_numero
+			AND B.IMP_COSTO <> 0;
+			
+			if(isnull(LD_IMPORTE_TOTAL))then
+			  LS_ASIENTOCOSTO = 'SI'
+			 /* MESSAGEBOX("ES NULO","NULO")*/
+		   ELSE
+				LS_ASIENTOCOSTO = 'NO'
+				/*MESSAGEBOX("NO ES NULO","NO NULO")
+				MESSAGEBOX("LD_IMPORTE_TOTAL",LD_IMPORTE_TOTAL)*/
+			end if	
+		
+		 IF LS_ASIENTOCOSTO = 'NO' THEN
+			ls_error = SPACE(255)
+			SQLCA.SP_PCS_CONTABLE_ICR(gs_cempresa, gs_calmacen, is_ind_movimiento, ls_numero, li_error, ls_error)
+			If li_error <> 0 Then  
+				SQLCA.of_rollBack()
+				MessageBox("Error al Generar Asiento" , ls_error)
+				RETURN
+			End if 
+		eND IF
+End if */
+//*******************************************************//
+// Grabar el costo en todos los almacenes
+//If //is_tipo_movimiento = "ICS" Then
+//	ls_error = SPACE(255)
+//	SQLCA.SP_PCS_CONTABLE_ICR(gs_cempresa, gs_calmacen, is_ind_movimiento, ls_numero, li_error, ls_error)
+//	If li_error <> 0 Then  
+//		SQLCA.of_rollBack()
+////		MessageBox("Error al Generar Asiento" , ls_error)
+//		RETURN
+//	End if 
+//End if 
+//**********************************************************//
+//fin de invocacion de asiento 
+//////////////////
+SQLCA.of_commit()
+
+ib_grabo_ok = TRUE
