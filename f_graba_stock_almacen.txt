@@ -1,0 +1,206 @@
+Datetime ldt_fecha
+ldt_fecha = f_fecha_sistema()
+Decimal  ldc_stock , ldc_suma , ldc_consigcliente , ldc_transsalida
+Decimal  ldc_consigproveedor
+Decimal  ldc_preventa
+ldc_suma = adc_stock
+if ab_suma = FALSE Then 	ldc_suma = adc_stock  * -1
+// Tipo de Stock
+ldc_consigcliente   = 0
+ldc_transsalida     = 0
+ldc_consigproveedor = 0
+ldc_preventa        = 0
+choose case as_tipo_stock		
+	CASE "LIQ_CONSIGPROVEEDOR"
+		   ldc_consigproveedor = ldc_suma * -1
+			ldc_suma = 0
+	CASE "LIQ_CONSIGCLIENTE"
+		   ldc_consigcliente = ldc_suma * -1
+			ldc_suma = 0
+	case "STK_CONSIGCLIENTE"
+		   ldc_consigcliente = ldc_suma * -1
+	case "STK_TRANSSALIDA"
+		   ldc_transsalida   = ldc_suma * -1
+	case "CIERRA_TRANSFERENCIA"
+		   ldc_transsalida   = ldc_suma
+			ldc_suma = 0
+	case "STK_CONSIGPROVEEDOR"
+		   ldc_consigproveedor = ldc_suma
+	case "STK_PREVENTA"
+		   ldc_preventa = ldc_suma * -1
+			ldc_suma = 0
+	case "STK_VENTA"
+		   ldc_preventa = ldc_suma 
+	case "STK_DEVOLUCION_CONSIGNACION_PROVEEDOR"
+			ldc_consigproveedor = ldc_suma
+end choose
+//GRABA STOCK GENERAL
+SELECT STK_ALMACEN INTO :ldc_stock
+FROM FEC_STOCK
+WHERE COD_EMPRESA    = :gs_cempresa       AND
+      COD_TITULO     = :as_cod_titulo     AND
+      COD_ALMACEN    = :as_cod_almacen    ;
+IF SQLCA.SQLCODE = 100 Then			
+	INSERT INTO FEC_STOCK (
+	    COD_EMPRESA    , COD_TITULO          , COD_ALMACEN      , 
+		 STK_ALMACEN    , 
+		 STK_CONSIGCLIENTE , STK_TRANSFSALIDA , STK_CONSIGPROVEEDOR ,
+		 STK_PREVENTA ,
+		 COD_USUARIO    , FEC_REGISTRO        , IND_REGISTRO )
+	VALUES (:gs_cempresa , :as_cod_titulo , :as_cod_almacen , 
+			  :ldc_suma    , :ldc_consigcliente , :ldc_transsalida , :ldc_consigproveedor , 
+			  :ldc_preventa ,
+			  :gs_cusuario , :ldt_fecha , 'S' ) ;
+	IF SQLCA.SQLCODE <> 0 Then
+		as_error = "Stock General : " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+
+ELSE	
+	If SQLCA.SQLCODE <> 0 Then 
+		as_error = String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+
+	UPDATE FEC_STOCK
+		SET STK_ALMACEN       = NVL(STK_ALMACEN,0) + :ldc_suma ,
+		    STK_CONSIGCLIENTE = NVL(STK_CONSIGCLIENTE,0) + :ldc_consigcliente , 
+		    STK_TRANSFSALIDA  = NVL(STK_TRANSFSALIDA,0) + :ldc_transsalida , 
+		    STK_CONSIGPROVEEDOR = NVL(STK_CONSIGPROVEEDOR,0) + :ldc_consigproveedor , 
+		    STK_PREVENTA = NVL(STK_PREVENTA,0) + :ldc_preventa , 
+		    cod_usuario    = :gs_cusuario ,
+			 fec_registro   = :ldt_fecha
+	WHERE COD_EMPRESA    = :gs_cempresa       AND
+			COD_TITULO     = :as_cod_titulo     AND
+			COD_ALMACEN    = :as_cod_almacen    ;
+	If SQLCA.SQLCODE <> 0 Then 
+		as_error = "Stock General : " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+
+End if 	
+
+//GRABA STOCK POR LOTE
+SELECT STK_ALMACEN INTO :ldc_stock
+FROM FEC_STOCK_LOTE
+WHERE COD_EMPRESA    = :gs_cempresa       AND
+      COD_TITULO     = :as_cod_titulo     AND
+      COD_ALMACEN    = :as_cod_almacen    AND
+		TIPO_PROVEEDOR = :as_tipo_proveedor AND
+		COD_PROVEEDOR  = :as_cod_proveedor  AND
+		NRO_LOTE       = :as_nro_lote       ;		
+IF SQLCA.SQLCODE = 100 Then	
+	INSERT INTO FEC_STOCK_LOTE (
+	    COD_EMPRESA    , COD_TITULO       , COD_ALMACEN      , 
+		 TIPO_PROVEEDOR , COD_PROVEEDOR    , NRO_LOTE         , 
+		 FEC_INGRESO    , IMP_COSTO        , STK_ALMACEN      ,		 
+		 STK_CONSIGCLIENTE , STK_TRANSSALIDA , STK_CONSIGPROVEEDOR , 
+		 STK_PREVENTA ,
+		 COD_USUARIO    , FEC_REGISTRO     , IND_REGISTRO )
+	VALUES (:gs_cempresa , :as_cod_titulo , :as_cod_almacen , 
+	        :as_tipo_proveedor , :as_cod_proveedor , :as_nro_lote ,
+			  :adt_fecha_ingreso , nvl(:adc_costo,0)        , :ldc_suma , 			  
+			  :ldc_consigcliente , :ldc_transsalida , :ldc_consigproveedor ,
+			  :ldc_preventa ,
+			  :gs_cusuario , :ldt_fecha , 'S' ) ;
+	IF SQLCA.SQLCODE <> 0 Then
+		as_error = "Stock Detalle : " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+ELSE	
+	If SQLCA.SQLCODE <> 0 Then 
+		as_error = String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+	UPDATE FEC_STOCK_LOTE
+		SET STK_ALMACEN = STK_ALMACEN + :ldc_suma      ,
+		    STK_CONSIGCLIENTE = NVL(STK_CONSIGCLIENTE,0) + :ldc_consigcliente , 
+		    STK_TRANSSALIDA   = NVL(STK_TRANSSALIDA,0) + :ldc_transsalida , 		
+		    STK_CONSIGPROVEEDOR = NVL(STK_CONSIGPROVEEDOR,0) + :ldc_consigproveedor , 
+		    STK_PREVENTA = NVL(STK_PREVENTA,0) + :ldc_preventa , 
+		    cod_usuario    = :gs_cusuario ,
+			 fec_registro   = :ldt_fecha
+	WHERE COD_EMPRESA    = :gs_cempresa       AND
+			COD_TITULO     = :as_cod_titulo     AND
+			COD_ALMACEN    = :as_cod_almacen    AND
+			TIPO_PROVEEDOR = :as_tipo_proveedor AND
+			COD_PROVEEDOR  = :as_cod_proveedor  AND
+			NRO_LOTE       = :as_nro_lote       ;		
+	If SQLCA.SQLCODE <> 0 Then 
+		as_error = "Stock Detalle : " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+		RETURN "-1"
+	End if 
+End if 	
+
+// Buscamos Stock Minimo 
+Decimal ldc_minimo
+SELECT x.STOCK_MINIMO INTO :ldc_minimo
+FROM FEC_STOCK_ALMACEN x
+WHERE x.COD_EMPRESA = :gs_cempresa    AND
+      x.COD_ALMACEN = :as_cod_almacen AND
+		x.COD_TITULO  = :as_cod_titulo ;
+If isnull(ldc_minimo)		 Then ldc_minimo = 0
+// Validar Reposicion
+Decimal ldc_actual
+Long    ll_insert
+IF ldc_minimo > 0 Then
+	// Si tiene Reposicion Insertada
+	ll_insert = 0
+	SELECT count(*) INTO :ll_insert
+	FROM FEC_REPOSICION 
+	WHERE COD_EMPRESA    = :gs_cempresa       AND
+			COD_TITULO     = :as_cod_titulo     AND
+			COD_ALMACEN    = :as_cod_almacen    ;
+	
+	ldc_actual = 0
+	SELECT STK_ALMACEN INTO :ldc_actual
+	FROM FEC_STOCK
+	WHERE COD_EMPRESA    = :gs_cempresa       AND
+			COD_TITULO     = :as_cod_titulo     AND
+			COD_ALMACEN    = :as_cod_almacen    ;
+	If isnull(ldc_actual) then ldc_actual = 0
+	IF ldc_minimo > ldc_actual Then
+		IF ll_insert = 0 Then
+			/// Insertamos una Reposicion
+			INSERT INTO FEC_REPOSICION
+			 (COD_EMPRESA  , COD_ALMACEN , COD_TITULO , STOCK_REPOSICION ,
+			  FEC_REGISTRO , COD_USUARIO )
+			SELECT :gs_cempresa , :as_cod_almacen , :as_cod_titulo , abs(:ldc_actual - :ldc_minimo) ,
+			  SYSDATE , :gs_cusuario
+			FROM DUAL ;
+			If SQLCA.SQLCODE <> 0 Then 
+				as_error = "Error al Insertar Sugerencia de Reposición: " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+				RETURN "-1"
+			End if 
+		ELSE
+			UPDATE FEC_REPOSICION
+			 SET STOCK_REPOSICION = abs(:ldc_actual - :ldc_minimo)
+			WHERE COD_EMPRESA = :gs_cempresa    AND
+			      COD_ALMACEN = :as_cod_almacen AND
+			      COD_TITULO  = :as_cod_titulo  ;
+			If SQLCA.SQLCODE <> 0 Then 
+				as_error = "Error al Actualizar Sugerencia de Reposición: " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+				RETURN "-1"
+			End if 
+		End if 
+	ELSE
+		If ll_insert > 0 Then
+			/// Eliminamos Reposicion
+			DELETE FROM FEC_REPOSICION
+			WHERE COD_EMPRESA = :gs_cempresa    AND
+			      COD_ALMACEN = :as_cod_almacen AND
+			      COD_TITULO  = :as_cod_titulo  ;
+			If SQLCA.SQLCODE <> 0 Then 
+				as_error = "Error al Eliminar Sugerencia de Reposición: " + String(SQLCA.SQLCODE) + ":" + SQLCA.SQLERRTEXT
+				RETURN "-1"
+			End if 
+
+		End if 
+		
+	End if 
+	
+End if 
+
+//
+
+RETURN "1"
