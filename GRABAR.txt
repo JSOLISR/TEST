@@ -1,3 +1,4 @@
+MODIFICADO
 //OVER
 String ls_error, ls_numero ,ls_tipo_lote, ls_result
 String ls_tipo_persona , ls_cod_persona, ls_asientocosto
